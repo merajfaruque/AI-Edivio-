@@ -202,15 +202,211 @@ $("#startEdit").addEventListener("click",()=>{
 
 $("#dropZone").addEventListener("click",e=>{if(e.target===dropZone||e.target.closest(".upload-icon")||e.target.closest("h3")||e.target.closest("p"))fileInput.click();});
 
-</script>
-</body>
-</html>
+<script>
+const $ = (s, root = document) => root.querySelector(s);
+const $$ = (s, root = document) => [...root.querySelectorAll(s)];
 
 const API_BASE = "https://ai-edivio-api.onrender.com";
 
-$("#startEdit").addEventListener("click", async () => {
+const toast = (message) => {
+  const el = $("#toast");
+  el.textContent = message;
+  el.classList.add("show");
+  clearTimeout(window.__toastTimer);
+  window.__toastTimer = setTimeout(
+    () => el.classList.remove("show"),
+    3500
+  );
+};
+
+function showView(name) {
+  $$(".view").forEach(v =>
+    v.classList.toggle("active", v.id === `view-${name}`)
+  );
+  $$(".nav-item[data-view]").forEach(b =>
+    b.classList.toggle("active", b.dataset.view === name)
+  );
+
+  const titles = {
+    studio: "AI Studio",
+    projects: "My Projects",
+    tools: "AI Tools",
+    audio: "Audio Studio",
+    visuals: "B-roll & Visuals",
+    settings: "Settings"
+  };
+
+  $("#crumbTitle").textContent = titles[name] || "AI Studio";
+  $("#sidebar").classList.remove("open");
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+$$(".nav-item[data-view]").forEach(b =>
+  b.addEventListener("click", () => showView(b.dataset.view))
+);
+
+$$("[data-goto]").forEach(b =>
+  b.addEventListener("click", () => showView(b.dataset.goto))
+);
+
+$("#menuBtn").addEventListener("click", () =>
+  $("#sidebar").classList.toggle("open")
+);
+
+const fileInput = $("#videoFile");
+const dropZone = $("#dropZone");
+const startButton = $("#startEdit");
+
+let selectedFile = null;
+let localUrl = null;
+
+$("#chooseFile").addEventListener("click", e => {
+  e.stopPropagation();
+  fileInput.click();
+});
+
+$("#changeVideo").addEventListener("click", () => {
+  fileInput.click();
+});
+
+function handleFile(file) {
+  if (!file) return;
+
+  if (!file.type.startsWith("video/")) {
+    toast("Please select a video file.");
+    return;
+  }
+
+  if (file.size > 200 * 1024 * 1024) {
+    toast("Please choose a video under 200 MB.");
+    return;
+  }
+
+  selectedFile = file;
+
+  if (localUrl) URL.revokeObjectURL(localUrl);
+  localUrl = URL.createObjectURL(file);
+
+  $("#previewPlayer").src = localUrl;
+  $("#previewPlayer").load();
+
+  $("#previewName").textContent = file.name;
+  $("#previewSize").textContent =
+    `${(file.size / 1024 / 1024).toFixed(1)} MB · Local preview`;
+
+  $("#videoPreview").hidden = false;
+  $("#dropZone").style.display = "none";
+  $("#fileInfo").textContent = `Selected: ${file.name}`;
+
+  const oldDownload = $("#processedDownload");
+  if (oldDownload) oldDownload.remove();
+
+  toast("Video selected. Ready to process.");
+}
+
+fileInput.addEventListener("change", e => {
+  handleFile(e.target.files[0]);
+});
+
+dropZone.addEventListener("dragover", e => {
+  e.preventDefault();
+  dropZone.classList.add("dragging");
+});
+
+dropZone.addEventListener("dragleave", () => {
+  dropZone.classList.remove("dragging");
+});
+
+dropZone.addEventListener("drop", e => {
+  e.preventDefault();
+  dropZone.classList.remove("dragging");
+  handleFile(e.dataTransfer.files[0]);
+});
+
+dropZone.addEventListener("click", e => {
+  if (
+    e.target === dropZone ||
+    e.target.closest(".upload-icon") ||
+    e.target.closest("h3") ||
+    e.target.closest("p")
+  ) {
+    fileInput.click();
+  }
+});
+
+$$(".style-option").forEach(label => {
+  label.addEventListener("click", () => {
+    $$(".style-option").forEach(x => x.classList.remove("selected"));
+    label.classList.add("selected");
+  });
+});
+
+function createEditPlan() {
+  const chosenStyle =
+    $('input[name="style"]:checked')?.value || "Educational Pro";
+
+  const format = $("#format").value;
+
+  const enabled = $$(".control-card")
+    .filter(card => $("input[type=checkbox]", card).checked)
+    .map(card => $(".control-title b", card).textContent);
+
+  const instruction = $("#instructions").value.trim();
+
+  $("#planSummary").textContent =
+    `Style: ${chosenStyle} · Output: ${format}. ` +
+    `Selected video: ${selectedFile.name}`;
+
+  const steps = [
+    ["01 · Upload", "Upload your video to the processing server."],
+    ["02 · Process", "Convert the video to a compatible MP4 format."],
+    ["03 · Review", "Preview and download the processed video."]
+  ];
+
+  $("#planSteps").innerHTML = steps.map(([title, detail]) =>
+    `<div class="plan-step"><b>${title}</b><small>${detail}</small></div>`
+  ).join("");
+
+  $("#pipelineResult").hidden = false;
+
+  window.AIEdivioDraftPlan = {
+    fileName: selectedFile.name,
+    fileSize: selectedFile.size,
+    style: chosenStyle,
+    format,
+    enabledFeatures: enabled,
+    instructions: instruction
+  };
+}
+
+async function readResponse(response) {
+  const text = await response.text();
+
+  let data;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    throw new Error(
+      `Server returned an unexpected response (HTTP ${response.status}).`
+    );
+  }
+
+  if (!response.ok) {
+    throw new Error(
+      data.detail || `Server error: HTTP ${response.status}`
+    );
+  }
+
+  return data;
+}
+
+startButton.addEventListener("click", async () => {
   if (!selectedFile) {
     toast("Please choose a video first.");
+    $("#dropZone").scrollIntoView({
+      behavior: "smooth",
+      block: "center"
+    });
     return;
   }
 
@@ -219,11 +415,17 @@ $("#startEdit").addEventListener("click", async () => {
     return;
   }
 
-  const button = $("#startEdit");
-  button.disabled = true;
-  button.textContent = "Uploading video...";
+  startButton.disabled = true;
 
   try {
+    createEditPlan();
+    $("#pipelineResult").scrollIntoView({
+      behavior: "smooth",
+      block: "start"
+    });
+
+    startButton.textContent = "Connecting to server...";
+
     const formData = new FormData();
     formData.append("video", selectedFile);
 
@@ -232,29 +434,37 @@ $("#startEdit").addEventListener("click", async () => {
       body: formData
     });
 
-    const uploadData = await uploadResponse.json();
+    const uploadData = await readResponse(uploadResponse);
 
-    if (!uploadResponse.ok) {
-      throw new Error(uploadData.detail || "Upload failed.");
+    if (!uploadData.job_id) {
+      throw new Error("Server did not return a video job ID.");
     }
 
-    button.textContent = "Processing video...";
+    startButton.textContent = "Processing video...";
+    toast("Upload complete. Processing has started.");
 
     const processResponse = await fetch(
-      `${API_BASE}/process/${uploadData.job_id}`,
+      `${API_BASE}/process/${encodeURIComponent(uploadData.job_id)}`,
       { method: "POST" }
     );
 
-    const processData = await processResponse.json();
+    const processData = await readResponse(processResponse);
 
-    if (!processResponse.ok) {
-      throw new Error(processData.detail || "Processing failed.");
+    if (!processData.download_url) {
+      throw new Error("Server did not return a download link.");
     }
 
-    const downloadUrl = API_BASE + processData.download_url;
+    const downloadUrl = new URL(
+      processData.download_url,
+      API_BASE
+    ).href;
 
-    $("#previewPlayer").src = downloadUrl;
-    $("#previewPlayer").load();
+    const player = $("#previewPlayer");
+    player.src = downloadUrl;
+    player.load();
+
+    $("#previewName").textContent =
+      "Processed: " + selectedFile.name;
 
     let downloadButton = $("#processedDownload");
 
@@ -262,22 +472,29 @@ $("#startEdit").addEventListener("click", async () => {
       downloadButton = document.createElement("a");
       downloadButton.id = "processedDownload";
       downloadButton.className = "primary-btn";
-      downloadButton.textContent = "Download processed video";
       downloadButton.style.display = "inline-block";
-      downloadButton.style.margin = "12px";
+      downloadButton.style.marginTop = "14px";
+      downloadButton.style.textDecoration = "none";
+
       $("#pipelineResult").appendChild(downloadButton);
     }
 
     downloadButton.href = downloadUrl;
     downloadButton.download = "ai_edivio_processed.mp4";
+    downloadButton.textContent = "Download processed video ↓";
 
     toast("Video processed! Preview or download it.");
 
   } catch (error) {
+    console.error("AI Edivio processing error:", error);
     toast(error.message || "Something went wrong.");
   } finally {
-    button.disabled = false;
-    button.textContent = "Build my edit plan →";
+    startButton.disabled = false;
+    startButton.innerHTML = 'Build my edit plan <span>→</span>';
   }
 });
+</script>
+</body>
+</html>
 
+  
