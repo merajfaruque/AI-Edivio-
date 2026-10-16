@@ -201,7 +201,34 @@ $("#startEdit").addEventListener("click",()=>{
 });
 
 $("#dropZone").addEventListener("click",e=>{if(e.target===dropZone||e.target.closest(".upload-icon")||e.target.closest("h3")||e.target.closest("p"))fileInput.click();});
+async function checkBackend() {
+  const status = document.getElementById("apiStatus");
 
+  try {
+    const response = await fetch(
+      "https://ai-edivio-api.onrender.com/health"
+    );
+
+    if (!response.ok) {
+      throw new Error("Backend unavailable");
+    }
+
+    const data = await response.json();
+
+    if (data.status === "ok") {
+      status.innerHTML =
+        '<span></span> Backend Connected';
+    } else {
+      status.innerHTML =
+        '<span></span> Backend Not Ready';
+    }
+  } catch (error) {
+    status.innerHTML =
+      '<span></span> Connection Failed';
+  }
+}
+
+checkBackend();
 </script>
 </body>
 </html>
