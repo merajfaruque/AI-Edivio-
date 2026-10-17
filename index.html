@@ -287,24 +287,7 @@ $("#startEdit").addEventListener("click", async () => {
     button.textContent = originalText;
   }
 });
-    return;}
-  const chosenStyle=$('input[name="style"]:checked')?.value||"Educational Pro";
-  const format=$("#format").value;
-  const enabled=$$(".control-card").filter(card=>$("input[type=checkbox]",card).checked).map(card=>$(".control-title b",card).textContent);
-  const instruction=$("#instructions").value.trim();
-  $("#planSummary").textContent=`Style: ${chosenStyle} · Output: ${format}. This is a plan for “${selectedFile.name}”, not a rendered export.`;
-  const steps=[
-    ["01 · Analyze","Transcribe speech and identify pauses, repeated takes and possible retakes."],
-    ["02 · Enhance","Clean voice, prepare captions and apply selected visual/audio treatments."],
-    ["03 · Finish",`Render ${format}, review the preview and export after approval.`]
-  ];
-  $("#planSteps").innerHTML=steps.map(([a,b])=>`<div class="plan-step"><b>${a}</b><small>${b}</small></div>`).join("");
-  $("#pipelineResult").hidden=false;
-  $("#pipelineResult").scrollIntoView({behavior:"smooth",block:"start"});
-  toast("Edit plan preview created. Real AI processing is not connected yet.");
-  // Expose a structured plan for a future backend integration without uploading user media.
-  window.AIEdivioDraftPlan={fileName:selectedFile.name,fileSize:selectedFile.size,style:chosenStyle,format,enabledFeatures:enabled,instructions:instruction};
-});
+    
 
 $("#dropZone").addEventListener("click",e=>{if(e.target===dropZone||e.target.closest(".upload-icon")||e.target.closest("h3")||e.target.closest("p"))fileInput.click();});
 async function checkBackend() {
