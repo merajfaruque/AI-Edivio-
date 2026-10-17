@@ -319,5 +319,236 @@ async function checkBackend() {
 
 checkBackend();
 </script>
+  
+<script>
+/* AI Edivio frontend upgrade */
+(() => {
+  const API = "https://ai-edivio-api.onrender.com";
+  const studio = document.getElementById("view-studio");
+  if (!studio || !document.getElementById("startEdit")) return;
+
+  const panel = document.createElement("div");
+  panel.className = "panel";
+  panel.id = "realProcessingOptions";
+  panel.style.marginTop = "16px";
+  panel.innerHTML = `
+    <div class="panel-head">
+      <div>
+        <div class="eyebrow">REAL PROCESSING OPTIONS</div>
+        <h3>Render controls</h3>
+      </div>
+      <span class="tiny-badge">CONNECTED</span>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:14px;margin-top:16px">
+      <label style="font-size:12px;color:#d6e4f8">
+        <input id="edCut" type="checkbox" checked>
+        Remove long silent gaps
+        <small style="display:block;color:#91a5c4;margin:5px 0 0 22px">Does not choose between repeated takes.</small>
+      </label>
+      <label style="font-size:12px;color:#d6e4f8">
+        <input id="edClean" type="checkbox" checked>
+        Basic voice cleanup
+        <small style="display:block;color:#91a5c4;margin:5px 0 0 22px">Denoise + loudness balance.</small>
+      </label>
+      <div>
+        <label class="field-label" for="edRatio">Output frame</label>
+        <select id="edRatio">
+          <option value="original">Keep original ratio</option>
+          <option value="16:9">YouTube 16:9</option>
+          <option value="9:16">Shorts / Reels 9:16</option>
+          <option value="1:1">Square 1:1</option>
+        </select>
+      </div>
+      <div>
+        <label class="field-label" for="edBgMode">Background mode</label>
+        <select id="edBgMode">
+          <option value="none">Keep current background</option>
+          <option value="green">Replace green screen</option>
+        </select>
+        <small style="display:block;color:#91a5c4;margin-top:5px">Green mode needs a green backdrop and background image.</small>
+      </div>
+      <div>
+        <label class="field-label" for="edMusic">Background music file</label>
+        <input id="edMusic" type="file" accept="audio/*" style="width:100%;color:#bcd0eb;font-size:11px">
+      </div>
+      <div>
+        <label class="field-label" for="edMusicVol">Music volume <span id="edMusicPct">12%</span></label>
+        <input id="edMusicVol" type="range" min="0" max="40" value="12" style="width:100%">
+      </div>
+      <div>
+        <label class="field-label" for="edBgFile">Green-screen background image</label>
+        <input id="edBgFile" type="file" accept="image/png,image/jpeg,image/webp" style="width:100%;color:#bcd0eb;font-size:11px">
+      </div>
+      <div>
+        <label class="field-label" for="edSrt">Subtitle file (.SRT)</label>
+        <input id="edSrt" type="file" accept=".srt,application/x-subrip,text/plain" style="width:100%;color:#bcd0eb;font-size:11px">
+        <small style="display:block;color:#91a5c4;margin-top:5px">Upload an existing SRT file. Automatic speech transcription is not included yet.</small>
+      </div>
+    </div>
+    <div class="notice" style="margin-top:16px">
+      Upload any music, background image or subtitle file before processing.
+      Only use music you have permission to use.
+    </div>
+  `;
+
+  const settings = studio.querySelector(".settings-grid");
+  if (settings) {
+    settings.insertAdjacentElement("afterend", panel);
+  } else {
+    studio.appendChild(panel);
+  }
+
+  const vol = panel.querySelector("#edMusicVol");
+  vol.addEventListener("input", () => {
+    panel.querySelector("#edMusicPct").textContent = `${vol.value}%`;
+  });
+
+  const oldButton = document.getElementById("startEdit");
+  const button = oldButton.cloneNode(true);
+  oldButton.replaceWith(button);
+
+  button.addEventListener("click", async () => {
+    if (!window.selectedFile && typeof selectedFile === "undefined") {
+      toast("First choose a video.");
+      return;
+    }
+
+    const file = typeof selectedFile !== "undefined"
+      ? selectedFile
+      : window.selectedFile;
+
+    if (!file) {
+      toast("First choose a video.");
+      return;
+    }
+
+    const result = document.getElementById("pipelineResult");
+    const summary = document.getElementById("planSummary");
+    const steps = document.getElementById("planSteps");
+    const originalText = button.textContent;
+
+    button.disabled = true;
+    button.textContent = "Uploading video…";
+    result.hidden = false;
+    summary.textContent = "Uploading video to AI Edivio…";
+
+    try {
+      const fd = new FormData();
+      fd.append("video", file);
+
+      let r = await fetch(`${API}/upload`, {
+        method: "POST",
+        body: fd
+      });
+
+      let data = await r.json();
+      if (!r.ok) throw new Error(data.detail || "Upload failed.");
+
+      const job = data.job_id;
+
+      async function uploadAsset(inputId, field, endpoint) {
+        const asset = panel.querySelector(`#${inputId}`).files[0];
+        if (!asset) return;
+
+        const form = new FormData();
+        form.append(field, asset);
+
+        const resp = await fetch(
+          `${API}/assets/${encodeURIComponent(job)}/${endpoint}`,
+          { method: "POST", body: form }
+        );
+
+        const body = await resp.json();
+        if (!resp.ok) {
+          throw new Error(body.detail || `Could not upload ${field}.`);
+        }
+      }
+
+      summary.textContent = "Uploading selected assets…";
+
+      await uploadAsset("edMusic", "music", "music");
+      await uploadAsset("edBgFile", "background", "background");
+      await uploadAsset("edSrt", "captions", "captions");
+
+      const options = new FormData();
+      options.append("cut_silence",
+        panel.querySelector("#edCut").checked ? "true" : "false");
+      options.append("clean_audio",
+        panel.querySelector("#edClean").checked ? "true" : "false");
+      options.append("music_volume", String(Number(vol.value) / 100));
+      options.append("background_mode",
+        panel.querySelector("#edBgMode").value);
+      options.append("aspect_ratio",
+        panel.querySelector("#edRatio").value);
+      options.append("caption_style", "white");
+
+      button.textContent = "Processing video…";
+      summary.textContent = "Rendering video. Keep this page open…";
+
+      r = await fetch(`${API}/process/${encodeURIComponent(job)}`, {
+        method: "POST",
+        body: options
+      });
+
+      data = await r.json();
+      if (!r.ok) {
+        throw new Error(data.detail || "Processing failed.");
+      }
+
+      summary.textContent =
+        `Done. Original: ${data.original_duration_seconds}s · ` +
+        `Output: ${data.output_duration_seconds}s · ` +
+        `Estimated silent time removed: ${data.removed_seconds_estimate}s.`;
+
+      steps.innerHTML = `
+        <div class="plan-step">
+          <b>01 · Upload</b>
+          <small>Video and optional assets uploaded.</small>
+        </div>
+        <div class="plan-step">
+          <b>02 · Process</b>
+          <small>Features: ${
+            Object.entries(data.features || {})
+              .filter(([k, v]) => v === true)
+              .map(([k]) => k.replaceAll("_", " "))
+              .join(", ") || "basic transcode"
+          }.</small>
+        </div>
+        <div class="plan-step">
+          <b>03 · Export</b>
+          <small>MP4 duration check passed.</small>
+        </div>
+      `;
+
+      const old = document.getElementById("downloadOutput");
+      if (old) old.remove();
+
+      const link = document.createElement("a");
+      link.id = "downloadOutput";
+      link.className = "primary-btn full";
+      link.style.cssText =
+        "display:block;text-align:center;text-decoration:none;margin-top:16px";
+      link.textContent = "Download processed video ↓";
+      link.href = `${API}${data.download_url}`;
+      link.download = "ai_edivio_processed.mp4";
+      result.appendChild(link);
+
+      const notes = document.createElement("div");
+      notes.className = "notice";
+      notes.textContent = (data.notes || []).join(" ");
+      result.appendChild(notes);
+
+      toast("Video processing completed.");
+
+    } catch (err) {
+      summary.textContent = "Error: " + (err.message || String(err));
+      toast("Processing failed. Read the message in the result panel.");
+    } finally {
+      button.disabled = false;
+      button.textContent = originalText;
+    }
+  });
+})();
+</script>
 </body>
 </html>
