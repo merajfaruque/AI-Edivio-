@@ -180,8 +180,114 @@ $$(".style-option").forEach(label=>label.addEventListener("click",()=>{
   label.classList.add("selected");
 }));
 
-$("#startEdit").addEventListener("click",()=>{
-  if(!selectedFile){toast("First choose a video so you can preview the workflow.");$("#dropZone").scrollIntoView({behavior:"smooth",block:"center"});return;}
+$("#startEdit").addEventListener("click", async () => {
+  if (!selectedFile) {
+    toast("First choose a video.");
+    $("#dropZone").scrollIntoView({
+      behavior: "smooth",
+      block: "center"
+    });
+    return;
+  }
+
+  const button = $("#startEdit");
+  const originalText = button.textContent;
+
+  try {
+    button.disabled = true;
+    button.textContent = "Uploading video...";
+
+    $("#pipelineResult").hidden = false;
+    $("#planSummary").textContent =
+      "Uploading your video to AI Edivio server...";
+
+    const formData = new FormData();
+    formData.append("video", selectedFile);
+
+    const uploadResponse = await fetch(
+      "https://ai-edivio-api.onrender.com/upload",
+      {
+        method: "POST",
+        body: formData
+      }
+    );
+
+    const uploadData = await uploadResponse.json();
+
+    if (!uploadResponse.ok) {
+      throw new Error(
+        uploadData.detail || "Video upload failed."
+      );
+    }
+
+    $("#planSummary").textContent =
+      "Upload complete. Processing video...";
+
+    button.textContent = "Processing video...";
+
+    const processResponse = await fetch(
+      "https://ai-edivio-api.onrender.com/process/" +
+        encodeURIComponent(uploadData.job_id),
+      { method: "POST" }
+    );
+
+    const processData = await processResponse.json();
+
+    if (!processResponse.ok) {
+      throw new Error(
+        processData.detail || "Video processing failed."
+      );
+    }
+
+    $("#planSummary").textContent =
+      "Your video has been processed successfully.";
+
+    $("#planSteps").innerHTML =
+      "<div class='plan-step'>" +
+      "<b>01 · Upload</b>" +
+      "<small>Video sent to the server.</small>" +
+      "</div>" +
+      "<div class='plan-step'>" +
+      "<b>02 · Process</b>" +
+      "<small>FFmpeg processed the video.</small>" +
+      "</div>" +
+      "<div class='plan-step'>" +
+      "<b>03 · Export</b>" +
+      "<small>Your MP4 output is ready.</small>" +
+      "</div>";
+
+    const oldLink = document.getElementById("downloadOutput");
+    if (oldLink) oldLink.remove();
+
+    const downloadLink = document.createElement("a");
+    downloadLink.id = "downloadOutput";
+    downloadLink.className = "primary-btn full";
+    downloadLink.style.display = "block";
+    downloadLink.style.textAlign = "center";
+    downloadLink.style.textDecoration = "none";
+    downloadLink.style.marginTop = "16px";
+    downloadLink.textContent = "Download processed video ↓";
+    downloadLink.href =
+      "https://ai-edivio-api.onrender.com" +
+      processData.download_url;
+    downloadLink.setAttribute(
+      "download",
+      "ai_edivio_processed.mp4"
+    );
+
+    $("#pipelineResult").appendChild(downloadLink);
+    toast("Video processing completed.");
+
+  } catch (error) {
+    $("#planSummary").textContent =
+      "Error: " + error.message;
+    toast("Processing failed. Please check the error.");
+  } finally {
+    button.disabled = false;
+    button.textContent = originalText;
+  }
+});
+    return;}
   const chosenStyle=$('input[name="style"]:checked')?.value||"Educational Pro";
   const format=$("#format").value;
   const enabled=$$(".control-card").filter(card=>$("input[type=checkbox]",card).checked).map(card=>$(".control-title b",card).textContent);
