@@ -186,7 +186,7 @@ async def process_video(job_id:str,cut_silence:bool=Form(True),clean_audio:bool=
     out=OUTPUTS/f"{job_id}_processed.mp4"
     cmd += ["-filter_complex_threads","1","-filter_complex",";".join(graph),"-map",f"[{vlabel}]"]
     if alabel: cmd += ["-map",f"[{alabel}]"]
-    cmd += ["-c:v","libx264","-preset","ultrafast","-crf","23","-pix_fmt","yuv420p"]
+    cmd += ["-threads","1","-c:v","libx264","-preset","ultrafast","-crf","23","-pix_fmt","yuv420p"]
     if alabel: cmd += ["-c:a","aac","-b:a","160k"]
     expected=sum(e-s for s,e in segments)
     cmd += ["-movflags","+faststart","-t",f"{expected+.25:.3f}",str(out)]
