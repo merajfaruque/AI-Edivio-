@@ -149,9 +149,12 @@ async def process_video(job_id:str,cut_silence:bool=Form(True),clean_audio:bool=
       raise HTTPException(400,"Upload a background image for green-screen replacement.")
 
   cmd=["ffmpeg","-y","-i",str(source)]
-  bgidx=None
-  musicidx=None
-    if background_mode=="green": bgidx=1; cmd += ["-loop","1","-i",str(bg)]
+      bgidx=None
+      musicidx=None
+      if background_mode=="green": 
+          bgidx=1;
+          cmd += 
+ ["-loop","1","-i",str(bg)]
     if music: musicidx=2 if bgidx is not None else 1; cmd += ["-stream_loop","-1","-i",str(music)]
     graph=[]; vs=[]; auds=[]
     for i,(s,e) in enumerate(segments):
